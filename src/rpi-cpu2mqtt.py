@@ -24,8 +24,14 @@ import glob
 if config.ext_sensors:
     # append folder ext_sensor_lib
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ext_sensor_lib')))
-    import ds18b20
-    from sht21 import SHT21
+    for item in config.ext_sensors:
+        # only import the libraries which are required
+        if item[1] == "ds18b20":
+            import ds18b20
+        if item[1] == "sht21":
+            from sht21 import SHT21
+        if item[1] == "x1202":
+            from x1202 import X1202
 
 def check_wifi_signal(format):
     try:
@@ -148,7 +154,16 @@ def read_ext_sensors():
             # in case we have any problems to read the sensor, we continue and keep default values
             except Exception:
                 print ("Error while reading sensor %s" % item[1])
-    print (ext_sensors)
+        if item[1] == "x1202":
+            try:
+                with X1202() as x1202_dev1:
+                    temp = x1202_dev1.readVoltage()
+                    soc = x1202_dev1.readSOC()
+                    item[3] = [temp, soc]
+            except Exception:
+                print ("Error while reading sensor %s" % item[1])
+    #FIXME
+    #print (ext_sensors)
     return ext_sensors
 
 
@@ -569,6 +584,24 @@ def config_json(what_config, device="0"):
         # we define again the state topic in order to get a unique state topic if we have two sensors of the same type
         data["state_topic"] = config.mqtt_topic_prefix + "/" + hostname + "/" + what_config + "_" + device
         data["unique_id"] = hostname + "_" + what_config + "_" + device
+    elif what_config == "x1202_temp_status":
+        data["icon"] = "hass:thermometer"
+        data["name"] = device + " Temperature"
+        data["unit_of_measurement"] = "°C"
+        data["device_class"] = "temperature"
+        data["state_class"] = "measurement"
+        # we define again the state topic in order to get a unique state topic if we have two sensors of the same type
+        data["state_topic"] = config.mqtt_topic_prefix + "/" + hostname + "/" + what_config + "_" + device
+        data["unique_id"] = hostname + "_" + what_config + "_" + device
+    elif what_config == "x1202_soc_status":
+        data["icon"] = "hass:battery"
+        data["name"] = device + " Voltage"
+        data["unit_of_measurement"] = "V"
+        data["device_class"] = "voltage"
+        data["state_class"] = "measurement"
+        # we define again the state topic in order to get a unique state topic if we have two sensors of the same type
+        data["state_topic"] = config.mqtt_topic_prefix + "/" + hostname + "/" + what_config + "_" + device
+        data["unique_id"] = hostname + "_" + what_config + "_" + device
     
     else:
         return ""
@@ -757,6 +790,21 @@ def publish_to_mqtt(cpu_load=0, cpu_temp=0, used_space=0, voltage=0, sys_clock_s
                 client.publish(config.mqtt_topic_prefix + "/" + hostname + "/" + "sht21_temp_status_" + item[0], item[3][0], qos=config.qos, retain=config.retain)
                 # humidity
                 client.publish(config.mqtt_topic_prefix + "/" + hostname + "/" + "sht21_hum_status_" + item[0], item[3][1], qos=config.qos, retain=config.retain)
+            if item[1] == "x1202":
+                if config.discovery_messages:
+                    # temperature
+                    client.publish(
+                        config.mqtt_discovery_prefix + "/sensor/" + config.mqtt_topic_prefix + "/" + hostname + "_" + item[0] + "_temp_status/config",
+                        config_json('x1202_temp_status', device=item[0]), qos=config.qos)
+                    # humidity
+                    client.publish(
+                        config.mqtt_discovery_prefix + "/sensor/" + config.mqtt_topic_prefix + "/" + hostname + "_" + item[0] + "_soc_status/config",
+                        config_json('x1202_soc_status', device=item[0]), qos=config.qos)
+                # temperature
+                client.publish(config.mqtt_topic_prefix + "/" + hostname + "/" + "x1202_temp_status_" + item[0], item[3][0], qos=config.qos, retain=config.retain)
+                # humidity
+                client.publish(config.mqtt_topic_prefix + "/" + hostname + "/" + "x1202_soc_status_" + item[0], item[3][1], qos=config.qos, retain=config.retain)
+                
                 
 
     status_sensor_topic = config.mqtt_discovery_prefix + "/sensor/" + config.mqtt_topic_prefix + "/" + hostname + "_status/config"
